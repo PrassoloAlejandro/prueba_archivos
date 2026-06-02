@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador Red LoRa - Telemetría y Payload Hexadecimal</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background-color: #1e1e2f; color: #fff; 
+            margin: 0; padding: 10px; height: 100vh; overflow: hidden; 
+            display: flex; flex-direction: column; 
+        }
+        h1 { text-align: center; color: #4da6ff; margin: 0 0 10px 0; font-size: 1.3rem; }
+        .dashboard { display: flex; gap: 15px; flex: 1; min-height: 0; }
+        .panel { 
+            background: #2a2a40; padding: 12px; border-radius: 8px; flex: 1; 
+            display: flex; flex-direction: column; justify-content: space-between; 
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3); overflow: hidden; 
+        }
+        .panel h2 { text-align: center; margin: 0 0 8px 0; color: #ffcc00; font-size: 1.1rem; }
+        .control-group { margin-bottom: 6px; font-size: 0.85rem; }
+        label { display: block; margin-bottom: 2px; font-weight: bold; }
+        input[type=range] { width: 100%; cursor: pointer; margin: 2px 0; }
+        .value-display { float: right; color: #4da6ff; }
+        #gas-container { 
+            opacity: 0.3; pointer-events: none; transition: opacity 0.3s; 
+            border-left: 4px solid gray; padding-left: 8px; margin-bottom: 5px; font-size: 0.85rem; 
+        }
+        #gas-container.active { opacity: 1; pointer-events: auto; border-left: 4px solid #ff4d4d; }
+        .status-badge { 
+            display: block; text-align: center; padding: 4px; border-radius: 4px; 
+            margin-bottom: 6px; font-weight: bold; background: #444; font-size: 0.85rem; 
+        }
+        .timer-badge {
+            display: block; text-align: center; padding: 6px; border-radius: 4px; 
+            margin-bottom: 5px; font-weight: bold; background: #004d99; font-size: 0.85rem; border: 1px solid #4da6ff;
+        }
+        button { 
+            width: 100%; padding: 6px; border: none; border-radius: 4px; 
+            font-weight: bold; cursor: pointer; font-size: 0.85rem; margin-bottom: 2px;
+        }
+        .btn-tx { background-color: #4da6ff; color: #000; transition: background 0.2s; }
+        .btn-tx:hover { background-color: #3388dd; }
+        .btn-tx:disabled { background-color: #666; cursor: wait; color: #ccc; border: 1px solid #444; }
+        .btn-danger { background: #aa3333; color: white; margin-top: 5px;}
+        .console { 
+            background: #000; color: #00ff00; font-family: monospace; 
+            padding: 8px; border-radius: 5px; flex: 1; overflow-y: auto; 
+            font-size: 0.75rem; margin-top: 5px; min-height: 80px;
+        }
+        .network-area { 
+            background: #222; height: 30vh; min-height: 120px; 
+            border-radius: 8px; position: relative; overflow: hidden; 
+            border: 2px dashed #555; margin-top: 10px; 
+        }
+        .node { 
+            width: 65px; height: 65px; background: #333; border: 2px solid #4da6ff; 
+            border-radius: 50%; position: absolute; top: 50%; transform: translateY(-50%); 
+            display: flex; align-items: center; justify-content: center; flex-direction: column; 
+            font-size: 0.7rem; text-align: center; font-weight: bold; z-index: 1;
+        }
+        .node span { font-size: 1.2rem; margin-bottom: 2px; }
+        #node-sensor { left: 5%; border-color: #ff4d4d; }
+        #node-repeater { left: 45%; }
+        #node-gateway { right: 5%; border-color: #00cc66; }
+        
+        .packet { 
+            position: absolute; top: 10%; width: 180px; 
+            background: #fff; color: #000; 
+            border-radius: 8px; font-size: 0.7rem; font-weight: bold; 
+            display: none; z-index: 10; 
+            border: 2px solid #00cc66; 
+            box-shadow: 0 4px 8px rgba(0,0,0,0.5); text-align: left; 
+            transition: left 2s ease-in-out; overflow: hidden; 
+        }
+        .packet-header { background: #00cc66; color: #000; padding: 3px; text-align: center; font-size: 0.75rem; text-transform: uppercase; }
+        .packet-body { padding: 5px; }
+        .packet p { margin: 2px 0; display: flex; justify-content: space-between; }
+        #pkt-gas-row, #pkt-msg-row { display: none; }
+        #pkt-msg { color: red; font-weight: bold; font-size: 0.8rem; text-align: center; width: 100%;}
+        
+        .payload-raw {
+            background: #000; color: #0f0; font-family: monospace; 
+            font-size: 0.65rem; padding: 4px; text-align: center;
+            border-top: 1px solid #444; word-wrap: break-word; line-height: 1.2;
+        }
+        .highlight-hex { color: #ff3399; font-weight: bold; } 
+    </style>
+</head>
+<body>
+
+    <h1>Simulador Didáctico: Telemetría y Payload Hexadecimal</h1>
+
+    <div class="dashboard">
+        <div class="panel">
+            <div class="panel-top">
+                <h2>🌳 Nodo Sensor (ID: 15)</h2>
+                <span id="sensor-status" class="status-badge" style="background:#00cc66; color:#000;">ESTADO: SEGURO</span>
+                <div class="control-group">
+                    <label>Temperatura: <span id="temp-val" class="value-display">25 °C</span></label>
+                    <input type="range" id="temp-slider" min="10" max="85" value="25" oninput="updateEnvironment()">
+                </div>
+                <div class="control-group">
+                    <label>Humedad: <span id="hum-val" class="value-display">60 %</span></label>
+                    <input type="range" id="hum-slider" min="0" max="100" value="60" oninput="updateEnvironment()">
+                </div>
+                <div id="gas-container">
+                    <label>Calidad Aire: <span id="gas-val" class="value-display">0 ppm</span></label>
+                    <input type="range" id="gas-slider" min="0" max="500" value="0" oninput="updateEnvironment()">
+                    <small id="gas-msg" style="color:#aaa;">Sensor TVOC apagado.</small>
+                </div>
+            </div>
+            <div class="panel-bottom">
+                <span id="timer-display" class="timer-badge">Próximo TX en: Inicializando...</span>
+                <button id="btn-tx" class="btn-tx" onclick="forzarTx()">Forzar Envío (Duplicado)</button>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-top" style="display:flex; flex-direction:column; height:100%;">
+                <h2>📡 Repetidor (ID: 99)</h2>
+                <p style="font-size: 0.8rem; margin: 0 0 5px 0;"><strong>Memoria Caché:</strong></p>
+                <div id="repeater-cache" class="console">[Memoria Vacía]</div>
+            </div>
+            <div class="panel-bottom"><button class="btn-danger" onclick="limpiarCache()">Limpiar Caché</button></div>
+        </div>
+        
+        <div class="panel">
+            <div class="panel-top" style="display:flex; flex-direction:column; height:100%;">
+                <h2>☁️ Gateway 4G (ID: 1)</h2>
+                <p style="font-size: 0.8rem; margin: 0 0 5px 0;">Nube / Servidor Central:</p>
+                <div id="gateway-log" class="console" style="color: #4da6ff; line-height: 1.4;">Esperando datos por RF...</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="network-area">
+        <div class="node" id="node-sensor"><span>🌳</span> Sensor</div>
+        <div class="node" id="node-repeater"><span>📡</span> Repetidor</div>
+        <div class="node" id="node-gateway"><span>☁️</span> Gateway</div>
+        
+        <div class="packet" id="data-packet">
+            <div class="packet-header" id="pkt-title">RUTINA LoRa</div>
+            <div class="packet-body">
+                <p><span>Seq: <span id="pkt-seq">1</span></span> <span>TTL: <span id="pkt-ttl">2</span></span></p>
+                <p><span>Temp: <span id="pkt-temp">25°C</span></span> <span>Hum: <span id="pkt-hum">60%</span></span></p>
+                <p id="pkt-gas-row"><span>Gas: <span id="pkt-gas">0 ppm</span></span></p>
+                <p id="pkt-msg-row"><span id="pkt-msg">ALERTA</span></p>
+            </div>
+            <div class="payload-raw">
+                <div>[ PAYLOAD 20 BYTES ]</div>
+                <span id="hex-string">0F 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Variables de estado super robustas
+        let seqNum = 0; 
+        let cacheRepetidor = [];
+        let isTransmitting = false;
+        let timeLeft = 3; // Arranca en 3 segundos para que veas acción rápido
+        let estadoActual = "SEGURO";
+
+        // Función matemática a prueba de fallos
+        function toHexDec(val, bytes) {
+            val = Number(val) || 0; // Si hay error, fuerza a 0
+            if (val < 0) { val = (0xFFFFFFFF + val + 1); }
+            let hex = val.toString(16).toUpperCase();
+            return hex.padStart(bytes * 2, '0');
+        }
+
+        // Formateador seguro de Hexadecimales
+        function formatHex(hexStr) {
+            if (!hexStr) return "00";
+            if (hexStr.length % 2 !== 0) hexStr = "0" + hexStr; // Evita cortes impares
+            let matched = hexStr.match(/.{2}/g);
+            return matched ? matched.join(' ') : hexStr;
+        }
+
+        function generarPayloadHex(seq, ttl, hops, temp, hum, gas, resaltarCambio = false) {
+            let b_id = toHexDec(15, 1);       
+            let b_seq = toHexDec(seq, 2);     
+            let b_ttl = toHexDec(ttl, 1);     
+            let b_hops = toHexDec(hops, 1);   
+            let b_lat = toHexDec(-31416600, 4); 
+            let b_lon = toHexDec(-64183300, 4); 
+            let b_temp = toHexDec(Math.round(temp * 100), 2); 
+            let b_hum = toHexDec(Math.round(hum * 100), 2);   
+            let b_gas = toHexDec(gas, 2);
+            let b_bat = toHexDec(85, 1);      
+
+            let ttlClass = resaltarCambio ? "highlight-hex" : "";
+            let hopsClass = resaltarCambio ? "highlight-hex" : "";
+
+            let htmlString = `${formatHex(b_id)} ${formatHex(b_seq)} <span class="${ttlClass}">${formatHex(b_ttl)}</span> <span class="${hopsClass}">${formatHex(b_hops)}</span> `;
+            htmlString += `${formatHex(b_lat)} ${formatHex(b_lon)} `;
+            htmlString += `${formatHex(b_temp)} ${formatHex(b_hum)} `;
+            htmlString += `${formatHex(b_gas)} ${formatHex(b_bat)}`;
+            
+            return htmlString;
+        }
+
+        // Bucle Temporizador Principal
+        setInterval(() => {
+            if (!isTransmitting) {
+                timeLeft--;
+                document.getElementById("timer-display").innerText = `Próximo TX en: ${timeLeft}s`;
+                if (timeLeft <= 0) { 
+                    seqNum++; 
+                    transmitir(); 
+                    timeLeft = 10; // Luego del primero, vuelve a 10s
+                }
+            }
+        }, 1000);
+
+        function updateEnvironment() {
+            let temp = parseFloat(document.getElementById("temp-slider").value) || 25;
+            let hum = parseFloat(document.getElementById("hum-slider").value) || 60;
+            let gas = parseInt(document.getElementById("gas-slider").value) || 0;
+
+            document.getElementById("temp-val").innerText = temp + " °C";
+            document.getElementById("hum-val").innerText = hum + " %";
+            document.getElementById("gas-val").innerText = gas + " ppm";
+
+            let gasContainer = document.getElementById("gas-container");
+            let gasMsg = document.getElementById("gas-msg");
+            let sensorStatus = document.getElementById("sensor-status");
+
+            if (temp >= 45 && hum <= 30) {
+                gasContainer.classList.add("active");
+                gasMsg.innerText = "Aire analizado."; gasMsg.style.color = "#ffcc00";
+                if (gas >= 300) {
+                    estadoActual = "ALERTA";
+                    sensorStatus.innerText = "¡INCENDIO CONFIRMADO!";
+                    sensorStatus.style.background = "#ff4d4d"; sensorStatus.style.color = "#fff";
+                } else {
+                    estadoActual = "PRECAUCION";
+                    sensorStatus.innerText = "ESTADO: PRECAUCIÓN";
+                    sensorStatus.style.background = "#ffcc00"; sensorStatus.style.color = "#000";
+                }
+            } else {
+                estadoActual = "SEGURO";
+                gasContainer.classList.remove("active");
+                gasMsg.innerText = "Sensor TVOC apagado."; gasMsg.style.color = "#aaa";
+                document.getElementById("gas-slider").value = 0; 
+                document.getElementById("gas-val").innerText = "0 ppm";
+                sensorStatus.innerText = "ESTADO: SEGURO";
+                sensorStatus.style.background = "#00cc66"; sensorStatus.style.color = "#000";
+            }
+        }
+
+        function forzarTx() { 
+            if (!isTransmitting) { transmitir(); } 
+        }
+
+        // Función para liberar la red (Evita que quede colgado)
+        function liberarRed() {
+            isTransmitting = false;
+            let btn = document.getElementById("btn-tx");
+            btn.disabled = false;
+            btn.innerText = "Forzar Envío (Duplicado)";
+            document.getElementById("data-packet").style.display = "none";
+        }
+
+        function transmitir() {
+            try {
+                isTransmitting = true;
+                let btn = document.getElementById("btn-tx");
+                btn.disabled = true;
+                btn.innerText = "Transmitiendo..."; // Indicador visual de que no está colgado
+
+                let temp = parseFloat(document.getElementById("temp-slider").value) || 25;
+                let hum = parseFloat(document.getElementById("hum-slider").value) || 60;
+                let gas = parseInt(document.getElementById("gas-slider").value) || 0;
+                let packet = document.getElementById("data-packet");
+                let pktTitle = document.getElementById("pkt-title");
+                
+                let currTTL = 2;
+                let currHops = 0;
+
+                document.getElementById("pkt-seq").innerText = seqNum;
+                document.getElementById("pkt-ttl").innerText = currTTL;
+                document.getElementById("pkt-temp").innerText = temp + "°C";
+                document.getElementById("pkt-hum").innerText = hum + "%";
+                
+                document.getElementById("hex-string").innerHTML = generarPayloadHex(seqNum, currTTL, currHops, temp, hum, gas, false);
+
+                if (estadoActual === "SEGURO") {
+                    pktTitle.innerText = "RUTINA"; pktTitle.style.backgroundColor = "#00cc66"; packet.style.borderColor = "#00cc66";
+                    document.getElementById("pkt-gas-row").style.display = "none"; document.getElementById("pkt-msg-row").style.display = "none";
+                } else if (estadoActual === "PRECAUCION") {
+                    pktTitle.innerText = "ADVERTENCIA"; pktTitle.style.backgroundColor = "#ffcc00"; packet.style.borderColor = "#ffcc00";
+                    document.getElementById("pkt-gas-row").style.display = "flex"; document.getElementById("pkt-gas").innerText = gas + " ppm";
+                    document.getElementById("pkt-msg-row").style.display = "none";
+                } else if (estadoActual === "ALERTA") {
+                    pktTitle.innerText = "FUEGO!"; pktTitle.style.backgroundColor = "#ff4d4d"; packet.style.borderColor = "#ff4d4d";
+                    document.getElementById("pkt-gas-row").style.display = "flex"; document.getElementById("pkt-gas").innerText = gas + " ppm";
+                    document.getElementById("pkt-msg-row").style.display = "block";
+                }
+
+                packet.style.display = "block"; packet.style.left = "10%"; 
+                setTimeout(() => { packet.style.left = "42%"; }, 100);
+
+                setTimeout(() => {
+                    let cacheDiv = document.getElementById("repeater-cache");
+                    if (cacheRepetidor.includes(seqNum)) {
+                        cacheDiv.innerHTML += `<br><span style="color:red">-> Pkt ${seqNum} DUPLICADO. BLOQUEADO</span>`;
+                        cacheDiv.scrollTop = cacheDiv.scrollHeight;
+                        liberarRed();
+                    } else {
+                        cacheRepetidor.push(seqNum);
+                        cacheDiv.innerHTML += `<br>-> Rx Pkt ${seqNum}. TTL-1. Retransmitiendo...`;
+                        cacheDiv.scrollTop = cacheDiv.scrollHeight;
+                        
+                        currTTL = 1;
+                        currHops = 1;
+                        document.getElementById("pkt-ttl").innerText = currTTL;
+                        document.getElementById("hex-string").innerHTML = generarPayloadHex(seqNum, currTTL, currHops, temp, hum, gas, true);
+                        
+                        setTimeout(() => { packet.style.left = "85%"; }, 500);
+
+                        setTimeout(() => {
+                            let gwLog = document.getElementById("gateway-log");
+                            let hexLog = toHexDec(seqNum, 2);
+                            let logMsg = `<br>-> Frame Rx: <span style="color:#aaa;">0F ${formatHex(hexLog)} 01 01...</span>`;
+                            
+                            logMsg += `<br>&nbsp;&nbsp;&nbsp;↳ <strong>Decodificado:</strong> [Pkt ${seqNum}] T:${temp}°C H:${hum}%`;
+                            if (estadoActual !== "SEGURO") logMsg += ` G:${gas}ppm`;
+                            if (estadoActual === "ALERTA") logMsg += ` <span style="color:#ff4d4d; font-weight:bold;">- ALERTA DE INCENDIO</span>`;
+                            
+                            gwLog.innerHTML += logMsg;
+                            gwLog.scrollTop = gwLog.scrollHeight;
+                            
+                            liberarRed(); // Libera la red al finalizar todo el viaje
+                        }, 2500);
+                    }
+                }, 2100);
+            } catch (error) {
+                // Si algo se rompe, libera la red para no quedarse colgado
+                console.error("Error crítico:", error);
+                liberarRed();
+            }
+        }
+
+        function limpiarCache() {
+            cacheRepetidor = [];
+            document.getElementById("repeater-cache").innerHTML = "[Memoria Vacía]";
+        }
+    </script>
+</body>
+</html>
